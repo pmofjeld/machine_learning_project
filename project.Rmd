@@ -1,0 +1,95 @@
+---
+title: "Practical Machine Learning: Course Project"
+author: "Paul Mofjeld"
+date: "Friday, February 20, 2015"
+output: html_document
+---
+
+## Loading The Data
+
+```{r}
+training <- read.csv("pml-training.csv",
+                     na.strings=c(""," ","NA"))
+testing <- read.csv("pml-testing.csv",
+                    na.strings=c(""," ","NA"))
+```
+
+The data files contain blank fields in addition to 'NA's. We replace these with 'NA's to make life simpler.
+
+## Culling the Columns
+
+#### Unnecessary Variables
+
+```{r}
+names(training)[1:7]
+```
+
+It is assumed that these variables are unrelated to activity quality, or if they are related that it is a signal that we wish to ignore. For example, there could be a cyclic pattern in the data if each participant was asked to perform the various techniques in the same order. So, we will remove them.
+
+```{r}
+training <- training[,8:dim(training)[2]]
+testing <- testing[,8:dim(testing)[2]]
+```
+
+#### Missing Values
+
+Now, let us look at the distribution of missing values within our training set
+
+```{r}
+
+levels(as.factor(apply(training,2,function(x) sum(is.na(x)))))
+```
+
+It's clear that either a variable is entirely present or entirely missing. We really have no good way to impute these columns, so we'll remove them.
+
+```{r}
+col <- which(!is.na(training[1,]))
+
+training <- training[,col]
+testing <- testing[,col]
+
+```
+
+## Choosing our model
+
+Let's glance at the kind of variables we have chosen to work with:
+
+```{r}
+names(training)
+```
+
+I have some idea of what quantities these variables measure. What I don't have is an idea of how these quantities relate to weightlifting technique, and neither did the supervising wieghtlifters, I would imagine. Still, those supervisors made sure that the participants performed the various exercises correctly (or incorrectly in a specific way). How did they do this? Probably by simple observations like: "they aren't rocking their hips forward enough". So there is some threshold where the human observer determines that "yes, the subject is doing what we want". We hope that whatever it takes to convince a person would be reflected in the physical quantities measured.
+
+The key word I want to emphasize from the above discussion is *threshold*. Prediction trees use thresholds. We should build our predictive using trees in some way, because it will reflect the way that the experimenters created the data. More Importantly, prediction trees make identifying crucial variables automatic.
+
+I suggest we use random forests. Random forest models are known for accuracy (our highest priority in this project).
+
+## Building our Model
+
+```{r}
+library(caret)
+library(randomForest)
+set.seed(1)
+modFit <- randomForest(classe~.,
+             data=training,
+             ntree=50)
+
+## Let's see how our model does
+tbl <- table(predict(modFit),training$classe)
+tbl
+
+sum(diag(tbl))/sum(tbl)
+```
+
+100% accuracy is usually troubling as it calls to mind the pitfall of overfitting. Above, We tried to eliminate extraneous variables to mitigate overfitting. At any rate, we have built a model and demonstrated that we can make predictions of activity quality from activity monitors.
+
+## Cross-validation and Out-of-sample Error
+
+Fortunately for us the random forest method of building a model makes use of cross-validation as part of its process. Specifically, for each tree that is created: a bootstrapped sample is taken from a random subset of our training data, which is used to construct the tree. Internally the the randomForest() method tests each tree against the remainder of the training set (the part which was not use to construct a given tree) and randomForest() stores the resulting error rates in the resulting model object. If we average these errors over every tree, then we get the out-of-bag (OOB) error rate which is an unbiased estimator of out of sample error.
+
+```{r}
+## Out of bag error
+apply(modFit$err.rate,2,mean)
+```
+
+We estimate then that our out-of-sample error rate is about 2%. Thanks for evaluating my project.
